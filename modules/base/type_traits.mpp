@@ -48,4 +48,20 @@ export template<typename ReturnType, typename... Args>
 struct function_traits<ReturnType (*&)(Args...)>
     : public function_traits<ReturnType(Args...)> {};
 
+template<typename T, typename... Ts>
+struct index_in_pack_impl;
+
+template<typename T, typename... Ts>
+struct index_in_pack_impl<T, T, Ts...>
+    : std::integral_constant<std::size_t, 0> {};
+
+template<typename T, typename U, typename... Ts>
+struct index_in_pack_impl<T, U, Ts...>
+    : std::integral_constant<
+          std::size_t,
+          1 + index_in_pack_impl<T, Ts...>::value> {};
+
+export template<typename T, typename... Ts>
+constexpr std::size_t index_in_pack = index_in_pack_impl<T, Ts...>::value;
+
 } // namespace triple
