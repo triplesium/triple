@@ -39,10 +39,10 @@ export class Callable {
         if (args.size() != m_params.size())
             return false;
 
-        for (std::size_t i = 0; i < args.size(); ++i) {
-            if (!args[i].type().is(m_params[i].type()))
-                return false;
-        }
+        // for (std::size_t i = 0; i < args.size(); ++i) {
+        //     if (!args[i].type().is(m_params[i].type()))
+        //         return false;
+        // }
 
         return true;
     }

@@ -2,51 +2,40 @@ module;
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-
 #include <string_view>
 
 export module triple.refl:type;
+import triple.base;
 
 namespace triple::refl {
 
-export constexpr unsigned int c_max_types = 1000U;
-
-export using TypeId = std::uint32_t;
-static TypeId s_type_index = 2;
-
 export class TypeData {
-    friend class Type;
-
   public:
-    explicit TypeData() : m_id(0), m_name("") {}
-    explicit TypeData(std::string_view name, std::size_t size) :
-        m_id(s_type_index++), m_name(name), m_size(size) {}
-    explicit TypeData(
+    explicit constexpr TypeData() : m_name("") {}
+    explicit constexpr TypeData(
         std::string_view name,
-        const TypeData& base,
         std::size_t size
-    ) : TypeData(name, size) {
-        m_base = &base;
-    }
-    ~TypeData() {}
+    ) noexcept : m_name(name), m_size(size) {}
+    ~TypeData() = default;
 
     TypeData(TypeData&) = delete;
     TypeData& operator=(const TypeData&) = delete;
     TypeData(TypeData&&) = delete;
 
-  private:
-    TypeData(int) : m_id(1), m_name("Type") {}
+    constexpr std::string_view name() const { return m_name; }
+    constexpr std::size_t size() const { return m_size; }
 
   private:
-    TypeId m_id;
+    constexpr TypeData(int) : m_name("Type") {}
+
+  private:
     std::string_view m_name;
     std::size_t m_size;
-    const TypeData* m_base = nullptr;
 };
 
 export class Type {
   public:
-    Type(const TypeData& data) : m_data(&data) {}
+    constexpr Type(const TypeData& data) : m_data(&data) {}
     // Type(std::nullptr_t) : m_data(nullptr) {}
 
     Type(Type&&) = default;
@@ -54,36 +43,38 @@ export class Type {
     Type& operator=(Type&&) = default;
     Type& operator=(const Type&) = default;
 
-    friend bool operator==(Type lhs, Type rhs) { return lhs.id() == rhs.id(); }
-    friend bool operator<(Type lhs, Type rhs) { return lhs.id() < rhs.id(); }
-
-    // operator bool() const { return m_data != nullptr; }
-
-    bool is(Type type) const {
-        if (type == *this)
-            return true;
-        else if (m_data->m_base)
-            return Type(*m_data->m_base).is(type);
-        else
-            return false;
+    friend constexpr bool operator==(Type lhs, Type rhs) {
+        return lhs.hash() == rhs.hash();
+    }
+    friend constexpr bool operator<(Type lhs, Type rhs) {
+        return lhs.hash() < rhs.hash();
     }
 
-    std::string_view name() const {
-        auto last_colon = m_data->m_name.find_last_of(':');
+    constexpr std::string_view name() const {
+        auto last_colon = m_data->name().find_last_of(':');
         if (last_colon != std::string_view::npos)
-            return m_data->m_name.substr(last_colon + 1);
+            return m_data->name().substr(last_colon + 1);
         else
-            return m_data->m_name;
+            return m_data->name();
     }
 
-    std::string_view full_name() const { return m_data->m_name; }
+    constexpr std::string_view full_name() const { return m_data->name(); }
 
-    std::size_t size() const { return m_data->m_size; }
+    constexpr std::size_t size() const { return m_data->size(); }
 
-    TypeId id() const { return m_data->m_id; }
+    constexpr std::size_t hash() const { return crc32(full_name()); }
 
   private:
     const TypeData* m_data;
 };
 
 } // namespace triple::refl
+
+namespace std {
+export template<>
+struct hash<triple::refl::Type> {
+    std::size_t operator()(const triple::refl::Type& type) const {
+        return type.hash();
+    }
+};
+} // namespace std

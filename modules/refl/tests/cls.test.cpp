@@ -10,15 +10,18 @@ struct Obj {
     int a;
 };
 
+using namespace triple;
+using namespace triple::refl;
+
 TEST_CASE("", "") {
-    using namespace triple;
-    using namespace triple::refl;
+    STATIC_REQUIRE(type<int>().name() == "int"s);
+    STATIC_REQUIRE(type<Obj>().name() == "Obj"s);
+
     Cls::new_cls<Obj>().add_member("a", &Obj::a);
     auto& c = cls<Obj>();
     auto& m = c.member("a");
     Obj obj;
     obj.a = 5;
-    REQUIRE(type<int>().name() == "int"s);
     REQUIRE(m.name() == "a"s);
     REQUIRE(m.get(obj).value<int>() == 5);
     m.set(obj, 10);

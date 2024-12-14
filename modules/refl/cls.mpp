@@ -18,10 +18,10 @@ export class Cls {
   public:
     using ToStringFunc = std::string (*)(Ref);
 
-    static std::unordered_map<TypeId, Cls> s_classes;
+    static std::unordered_map<Type, Cls> s_classes;
     template<class T>
     static Cls& new_cls() {
-        auto [iter, success] = s_classes.emplace(type<T>().id(), type<T>());
+        auto [iter, success] = s_classes.emplace(type<T>(), type<T>());
         return iter->second;
     }
 
@@ -68,7 +68,7 @@ export class Cls {
     ToStringFunc m_to_string;
 };
 
-std::unordered_map<TypeId, Cls> Cls::s_classes {};
+std::unordered_map<Type, Cls> Cls::s_classes {};
 
 void init_builtin_types() {
     Cls::new_cls<void>();
@@ -80,6 +80,9 @@ void init_builtin_types() {
         return ref.value<std::string>();
     });
     auto add_cls = []<class T> {
+        if (Cls::s_classes.contains(type<T>())) {
+            return;
+        }
         auto& c = Cls::new_cls<T>();
         if constexpr (std::is_arithmetic_v<T>) {
             c.set_to_string(+[](Ref ref) {
@@ -208,7 +211,7 @@ export Cls& cls(const Type& type) {
         init_builtin_types();
         initialized = true;
     }
-    auto iter = Cls::s_classes.find(type.id());
+    auto iter = Cls::s_classes.find(type);
     if (iter == Cls::s_classes.end()) {
         log::fatal("Class not found: {}", type.name());
     }

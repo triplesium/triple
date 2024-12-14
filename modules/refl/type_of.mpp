@@ -44,20 +44,21 @@ consteval auto get_type_name_str_view() {
 #endif
 }
 
-export template<class T>
-Type type() {
-    // static Type* ty = nullptr;
-    // if (ty == nullptr) {
-    //     ty = new Type(typeid(T).name(), sizeof(T));
-    // }
-    static TypeData ty(get_type_name_str_view<T>(), sizeof(T));
-    return Type {ty};
-}
+// Workaround for unable to use `static constexpr` in a `constexpr` function.
+// Ref: https://stackoverflow.com/questions/62458079
+template<class T>
+struct TypeDataGetter {
+    static constexpr TypeData ty =
+        TypeData(get_type_name_str_view<T>(), sizeof(T));
+};
+template<>
+struct TypeDataGetter<void> {
+    static constexpr TypeData ty = TypeData("void", 0);
+};
 
-export template<>
-Type type<void>() {
-    static TypeData ty("void", 0);
-    return Type {ty};
+export template<class T>
+constexpr Type type() {
+    return Type {TypeDataGetter<T>::ty};
 }
 
 template<typename T>
