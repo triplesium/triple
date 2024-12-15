@@ -1,0 +1,243 @@
+module;
+#include <algorithm>
+#include <any>
+#include <cassert>
+#include <cstdint>
+#include <cstdlib>
+#include <tuple>
+#include <unordered_map>
+#include <vector>
+
+export module triple.ecs.v2:archetype;
+import triple.refl;
+import triple.base;
+import :entity;
+import :utils;
+
+namespace triple::ecs::v2 {
+
+export template<class... Comps>
+class Row {
+  public:
+    Row(Comps&&... args) : m_components(std::forward<Comps>(args)...) {}
+
+    template<class Comp>
+    static constexpr bool has_component() {
+        return is_any_of<Comp, Comps...>;
+    }
+
+    template<class Comp>
+    Comp& get() {
+        if constexpr (is_any_of<Comp, Comps...>) {
+            return std::get<Comp>(m_components);
+        } else if constexpr (std::is_default_constructible_v<Comp>) {
+            return Comp {};
+        } else {
+            static_assert(
+                false,
+                "Component is not provided nor default constructible"
+            );
+        }
+    }
+
+  private:
+    std::tuple<Comps...> m_components;
+};
+
+export template<class... Comps>
+    requires(sizeof...(Comps) > 0)
+class ArchetypeSlice;
+
+export template<class... Comps>
+class Archetype {
+  public:
+    Archetype() {
+        ((m_columns[refl::type<Comps>()] = std::vector<Comps>()), ...);
+    }
+
+    std::size_t size() const { return m_entity_to_row.size(); }
+
+    bool has_entity(Entity entity) const {
+        return m_entity_to_row.find(entity) != m_entity_to_row.end();
+    }
+
+    template<class Comp>
+    static constexpr bool has_component() {
+        return (std::is_same_v<Comp, Comps> || ...);
+    }
+
+    template<class Comp>
+        requires(has_component<Comp>())
+    std::vector<Comp>& get_column() {
+        return std::any_cast<std::vector<Comp>&>(m_columns.at(refl::type<Comp>()
+        ));
+    }
+
+    template<class Comp>
+        requires(has_component<Comp>())
+    constexpr std::size_t get_column_index() {
+        return index_in_pack<Comp, Comps...>;
+    }
+
+    template<class... Args>
+        requires(has_component<Args>() && ...)
+    void add_entity(Entity entity, Row<Args...>&& row = {}) {
+        assert(!has_entity(entity));
+        auto row_idx = size();
+        m_entity_to_row[entity] = row_idx;
+        m_row_to_entity[row_idx] = entity;
+        ((get_column<Comps>().push_back(row.get<Comps>())), ...);
+    }
+
+    template<class Comp>
+        requires(has_component<Comp>())
+    Comp& get_component(Entity entity) {
+        assert(has_entity(entity));
+        auto row = m_entity_to_row.at(entity);
+        auto& column = get_column<Comp>();
+        return column[row];
+    }
+
+    template<class Comp>
+        requires(has_component<Comp>())
+    void set_component(Entity entity, Comp&& comp) {
+        assert(has_entity(entity));
+        auto row = m_entity_to_row.at(entity);
+        auto& column = get_column<Comp>();
+        column[row] = std::forward<Comp>(comp);
+    }
+
+    void remove_entity(Entity entity) {
+        assert(has_entity(entity));
+        auto row = m_entity_to_row.at(entity);
+        // swap with the last row
+        for_each_column([row](auto& column) {
+            column[row] = column.back();
+            column.pop_back();
+        });
+        m_entity_to_row.erase(entity);
+        // move the index of the last element to 'row'
+        auto last_row = size() - 1;
+        auto last_entity = m_row_to_entity[last_row];
+        m_entity_to_row[last_entity] = row;
+        m_row_to_entity[row] = last_entity;
+        m_row_to_entity.erase(last_row);
+    }
+
+    template<class... SliceComps>
+    ArchetypeSlice<SliceComps...> slice() {
+        return {get_column<SliceComps>()...};
+    }
+
+    static constexpr std::size_t hash() { return hash_types<Comps...>(); }
+
+  private:
+    template<class F>
+    void for_each_column(F&& f) {
+        auto lambda = [&](auto& column) {
+            f(column);
+        };
+        (lambda(get_column<Comps>()), ...);
+    }
+
+  private:
+    std::unordered_map<refl::Type, std::any> m_columns;
+    std::unordered_map<Entity, std::size_t> m_entity_to_row;
+    std::unordered_map<std::size_t, Entity> m_row_to_entity;
+};
+
+template<class... Comps>
+    requires(sizeof...(Comps) > 0)
+class ArchetypeSlice {
+  public:
+    ArchetypeSlice(std::vector<Comps>&... columns) : m_columns(columns...) {}
+    class Iterator {
+      public:
+        using difference_type = std::ptrdiff_t;
+        using value_type = std::tuple<Comps&...>;
+        Iterator() = default;
+        Iterator(ArchetypeSlice* slice, std::size_t entity_index) :
+            m_slice(slice), m_entity_index(entity_index) {}
+
+        std::tuple<Comps&...> operator*() const {
+            return std::apply(
+                [&](auto&... columns) {
+                    return std::forward_as_tuple(columns[m_entity_index]...);
+                },
+                m_slice->m_columns
+            );
+        }
+
+        Iterator& operator++() {
+            m_entity_index++;
+            return *this;
+        }
+
+        void operator++(int) { ++*this; }
+
+        bool operator==(const Iterator& other) const {
+            return m_slice == other.m_slice &&
+                   m_entity_index == other.m_entity_index;
+        }
+
+        bool operator!=(const Iterator& other) const {
+            return !(*this == other);
+        }
+
+      private:
+        ArchetypeSlice* m_slice;
+        std::size_t m_entity_index;
+    };
+
+    Iterator begin() { return Iterator(this, 0); }
+    Iterator end() { return Iterator(this, size()); }
+
+    size_t size() const { return std::get<0>(m_columns).size(); }
+
+  private:
+    std::tuple<std::vector<Comps>&...> m_columns;
+};
+
+export class ArchetypeManager {
+  public:
+    ArchetypeManager() :
+        m_root_archetype(
+            std::any_cast<Archetype<>&>(m_archetypes[Archetype<>::hash()])
+        ) {}
+
+    template<class... Comps>
+    using sorted_archetype_t = detail::
+        instantiate_t<Archetype, detail::sorted_list_t<detail::list<Comps...>>>;
+    static_assert(std::is_same_v<
+                  sorted_archetype_t<int, float, char>,
+                  Archetype<char, float, int>>);
+
+    template<class... Comps>
+    sorted_archetype_t<Comps...>& get_or_create() {
+        using T = sorted_archetype_t<Comps...>;
+        auto hash = T::hash();
+        if (!m_archetypes.contains(hash)) {
+            m_archetypes[hash] = T {};
+        }
+        return std::any_cast<T&>(m_archetypes.at(hash));
+    }
+    Archetype<>& get_root() { return m_root_archetype; }
+
+    void add_entity(Entity id) { m_root_archetype.add_entity(id); }
+
+    bool has_entity(Entity id) const { return m_records.contains(id); }
+
+    template<class T>
+    void add_component(Entity entity, T&& comp = T {}) {}
+
+  private:
+    std::unordered_map<std::size_t, std::any> m_archetypes;
+    Archetype<>& m_root_archetype;
+
+    struct EntityRecord {
+        Entity id;
+    };
+    std::unordered_map<Entity, EntityRecord> m_records;
+};
+
+} // namespace triple::ecs::v2

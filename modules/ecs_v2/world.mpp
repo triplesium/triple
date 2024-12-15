@@ -1,0 +1,24 @@
+export module triple.ecs.v2:world;
+import triple.refl;
+import triple.base;
+import :entity;
+import :archetype;
+import :query;
+
+namespace triple::ecs::v2 {
+
+export class World {
+  public:
+    World() {}
+
+  private:
+    Entity next_entity_id() const {
+        static Entity id = 0;
+        return ++id;
+    }
+
+  private:
+    ArchetypeManager m_archetype_manager;
+};
+
+} // namespace triple::ecs::v2

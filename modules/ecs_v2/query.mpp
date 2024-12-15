@@ -1,0 +1,36 @@
+module;
+#include <functional>
+#include <iterator>
+#include <ranges>
+#include <vector>
+
+export module triple.ecs.v2:query;
+import triple.refl;
+import triple.base;
+import :entity;
+import :archetype;
+
+namespace triple::ecs::v2 {
+
+export template<class... Opts>
+class Query {
+  public:
+    template<class... Comps>
+    static constexpr bool matches(const Archetype<Comps...>&) {
+        return (Archetype<Comps...>::template has_component<Opts>() && ...);
+    }
+
+    template<class... Comps>
+    void add_if_matches(Archetype<Comps...>& archetype) {
+        if (matches(archetype)) {
+            m_slices.emplace_back(archetype.slice<Opts...>());
+        }
+    }
+
+    auto view() { return std::ranges::join_view(m_slices); }
+
+  private:
+    std::vector<ArchetypeSlice<Opts...>> m_slices;
+};
+
+} // namespace triple::ecs::v2

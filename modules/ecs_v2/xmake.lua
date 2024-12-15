@@ -1,0 +1,11 @@
+target("triple_ecs_v2")
+    set_kind("static")
+    add_files("*.mpp", {public = true})
+    -- add_files("*.cpp")
+    add_deps("triple_base", "triple_refl")
+
+target("triple_ecs_v2-tests")
+    set_kind("binary")
+    add_files("tests/*.test.cpp")
+    add_packages("catch2")
+    add_deps("triple_ecs_v2")

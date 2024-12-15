@@ -1,0 +1,14 @@
+export module triple.ecs.v2:system;
+
+namespace triple::ecs::v2 {
+
+export template<class Param>
+class SystemParam;
+
+export template<class... Params>
+class System {
+  public:
+    System() {}
+};
+
+} // namespace triple::ecs::v2
