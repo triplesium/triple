@@ -11,6 +11,7 @@ export module triple.app:asset;
 import triple.base;
 import triple.refl;
 import :app;
+import :plugin;
 
 #ifndef TRIPLE_ASSETS_PATH
 #    define TRIPLE_ASSETS_PATH ""
