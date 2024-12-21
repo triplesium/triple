@@ -43,11 +43,11 @@ export class Type {
     Type& operator=(Type&&) = default;
     Type& operator=(const Type&) = default;
 
-    friend constexpr bool operator==(Type lhs, Type rhs) {
-        return lhs.hash() == rhs.hash();
+    constexpr auto operator<=>(const Type& other) const {
+        return hash() <=> other.hash();
     }
-    friend constexpr bool operator<(Type lhs, Type rhs) {
-        return lhs.hash() < rhs.hash();
+    constexpr auto operator==(const Type& other) const {
+        return hash() == other.hash();
     }
 
     constexpr std::string_view name() const {
