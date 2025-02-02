@@ -1,7 +1,10 @@
 export module triple.ecs.v2;
 export import :archetype;
+export import :column;
 export import :entity;
+export import :fwd;
 export import :query;
+export import :sparse_set;
 export import :system;
 export import :utils;
 export import :world;

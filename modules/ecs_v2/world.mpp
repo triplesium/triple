@@ -1,9 +1,15 @@
+module;
+#include <algorithm>
+#include <any>
+#include <cassert>
+#include <unordered_map>
+
 export module triple.ecs.v2:world;
 import triple.refl;
 import triple.base;
+import :fwd;
 import :entity;
 import :archetype;
-import :query;
 
 namespace triple::ecs::v2 {
 
@@ -11,14 +17,130 @@ export class World {
   public:
     World() {}
 
-  private:
-    Entity next_entity_id() const {
-        static Entity id = 0;
-        return ++id;
+    Entity entity() {
+        Entity entity = m_entities.alloc();
+        auto archetype_id = m_archetypes.get_id_or_insert({});
+        auto& archetype = m_archetypes.get(archetype_id);
+        auto row = archetype.alloc(entity);
+        m_entities.set_location(
+            entity,
+            EntityLocation {
+                .archetype_id = archetype_id,
+                .row = row,
+            }
+        );
+        return entity;
     }
 
+    template<class T>
+    void add_component(Entity entity, T&& component) {
+        auto component_type = refl::type<T>();
+        auto old_location = m_entities.get_location(entity);
+        // Do not store reference to old archetype now because it may be
+        // invalidated after inserting new archetype.
+        auto old_components =
+            m_archetypes.get(old_location.archetype_id).components();
+        assert(
+            std::find(
+                old_components.begin(),
+                old_components.end(),
+                component_type
+            ) == old_components.end()
+        );
+
+        auto new_components = old_components;
+        new_components.push_back(component_type);
+        std::sort(new_components.begin(), new_components.end());
+        auto new_archetype_id = m_archetypes.get_id_or_insert(new_components);
+        auto& old_archetype = m_archetypes.get(old_location.archetype_id);
+        auto& new_archetype = m_archetypes.get(new_archetype_id);
+
+        auto new_row = new_archetype.alloc(entity);
+        auto old_row = old_location.row;
+        new_archetype
+            .set_component(component_type, new_row, std::forward<T>(component));
+        for (auto type : old_components) {
+            refl::Ref comp = old_archetype.get_component(type, old_row);
+            new_archetype.set_component(type, new_row, comp);
+        }
+        old_archetype.remove_row(old_row);
+        m_entities.set_location(
+            entity,
+            EntityLocation {
+                .archetype_id = new_archetype_id,
+                .row = new_row,
+            }
+        );
+    }
+
+    template<class T>
+    void remove_component(Entity entity) {
+        auto component_type = refl::type<T>();
+        auto old_location = m_entities.get_location(entity);
+        auto old_components =
+            m_archetypes.get(old_location.archetype_id).components();
+        assert(
+            std::find(
+                old_components.begin(),
+                old_components.end(),
+                component_type
+            ) != old_components.end()
+        );
+
+        auto new_components = old_components;
+        new_components.erase(
+            std::remove(
+                new_components.begin(),
+                new_components.end(),
+                component_type
+            ),
+            new_components.end()
+        );
+        auto new_archetype_id = m_archetypes.get_id_or_insert(new_components);
+        auto& old_archetype = m_archetypes.get(old_location.archetype_id);
+        auto& new_archetype = m_archetypes.get(new_archetype_id);
+
+        auto new_row = new_archetype.alloc(entity);
+        auto old_row = old_location.row;
+        for (auto type : old_components) {
+            if (type == component_type) {
+                continue;
+            }
+            refl::Ref comp = old_archetype.get_component(type, old_row);
+            new_archetype.set_component(type, new_row, comp);
+        }
+        old_archetype.remove_row(old_row);
+        m_entities.set_location(
+            entity,
+            EntityLocation {
+                .archetype_id = new_archetype_id,
+                .row = new_row,
+            }
+        );
+    }
+
+    template<class T>
+    bool has_component(Entity entity) {
+        auto location = m_entities.get_location(entity);
+        auto& archetype = m_archetypes.get(location.archetype_id);
+        return archetype.has_component(refl::type<T>());
+    }
+
+    template<class T>
+    T& get_component(Entity entity) {
+        auto location = m_entities.get_location(entity);
+        auto& archetype = m_archetypes.get(location.archetype_id);
+        return archetype.get_component(refl::type<T>(), location.row)
+            .value<T>();
+    }
+
+    Archetypes& archetypes() { return m_archetypes; }
+
+    Entities entities() { return m_entities; }
+
   private:
-    ArchetypeManager m_archetype_manager;
+    Entities m_entities;
+    Archetypes m_archetypes;
 };
 
 } // namespace triple::ecs::v2

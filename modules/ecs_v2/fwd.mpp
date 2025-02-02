@@ -1,0 +1,12 @@
+module;
+#include <cstdint>
+
+export module triple.ecs.v2:fwd;
+
+namespace triple::ecs::v2 {
+
+export using Entity = std::uint32_t;
+export using ArchetypeId = std::uint32_t;
+export using SystemId = std::uint32_t;
+
+} // namespace triple::ecs::v2

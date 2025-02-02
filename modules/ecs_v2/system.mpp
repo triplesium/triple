@@ -1,14 +1,26 @@
 export module triple.ecs.v2:system;
+import :fwd;
+import :world;
+import std;
 
 namespace triple::ecs::v2 {
 
-export template<class Param>
-class SystemParam;
+class SystemParam {
+  public:
+    virtual void init(World& world) {}
+    virtual void update(World& world) {}
+};
 
 export template<class... Params>
 class System {
   public:
-    System() {}
+    System(std::function<void(Params...)> func) : m_func(func) {}
+
+    void run(World& world) {}
+
+  private:
+    std::function<void(Params...)> m_func;
+    std::array<SystemParam*, sizeof...(Params)> m_params;
 };
 
 } // namespace triple::ecs::v2

@@ -1,36 +1,110 @@
 module;
+#include <algorithm>
 #include <functional>
 #include <iterator>
 #include <ranges>
+#include <tuple>
 #include <vector>
 
 export module triple.ecs.v2:query;
 import triple.refl;
 import triple.base;
+import :fwd;
 import :entity;
 import :archetype;
+import :world;
 
 namespace triple::ecs::v2 {
 
-export template<class... Opts>
+export template<class... Params>
 class Query {
   public:
-    template<class... Comps>
-    static constexpr bool matches(const Archetype<Comps...>&) {
-        return (Archetype<Comps...>::template has_component<Opts>() && ...);
-    }
+    Query(World& world) : m_world(world) { update_archetypes(); }
 
-    template<class... Comps>
-    void add_if_matches(Archetype<Comps...>& archetype) {
-        if (matches(archetype)) {
-            m_slices.emplace_back(archetype.slice<Opts...>());
+    void update_archetypes() {
+        // TODO: store highest archetype id and update only new archetypes.
+        m_matched_archetypes.clear();
+
+        std::vector<refl::Type> components = {refl::type<Params>()...};
+        std::ranges::sort(components);
+
+        auto& archetypes = m_world.archetypes();
+        for (auto& archetype : archetypes.archetypes()) {
+            if (std::ranges::includes(archetype.components(), components)) {
+                m_matched_archetypes.push_back(archetype.id());
+            }
         }
     }
 
-    auto view() { return std::ranges::join_view(m_slices); }
+    class Iterator {
+      public:
+        using value_type = std::tuple<Params&...>;
+        using difference_type = std::ptrdiff_t;
+        Iterator() = default;
+        Iterator(
+            Query* query,
+            World* world,
+            std::size_t archetype_idx,
+            std::size_t row
+        ) :
+            m_query(query), m_world(world), m_archetype_idx(archetype_idx),
+            m_row(row) {}
+
+        value_type operator*() const {
+            auto& archetype = m_world->archetypes().get(
+                m_query->m_matched_archetypes[m_archetype_idx]
+            );
+            return std::forward_as_tuple([&]() -> decltype(auto) {
+                if constexpr (std::is_same_v<Params, Entity>) {
+                    return archetype.entity(m_row);
+                } else {
+                    return archetype.get_component(refl::type<Params>(), m_row)
+                        .value<Params>();
+                }
+            }()...);
+        }
+
+        bool operator==(const Iterator& other) const {
+            return m_archetype_idx == other.m_archetype_idx &&
+                   m_row == other.m_row;
+        }
+
+        Iterator& operator++() {
+            auto& archetype = m_world->archetypes().get(
+                m_query->m_matched_archetypes[m_archetype_idx]
+            );
+            if (++m_row >= archetype.size()) {
+                m_row = 0;
+                if (++m_archetype_idx >= m_query->m_matched_archetypes.size()) {
+                    m_archetype_idx = m_query->m_matched_archetypes.size();
+                }
+            }
+            return *this;
+        }
+
+        Iterator operator++(int) {
+            auto copy = *this;
+            ++(*this);
+            return copy;
+        }
+
+      private:
+        Query* m_query;
+        World* m_world;
+        std::size_t m_archetype_idx;
+        std::size_t m_row;
+    };
+    static_assert(std::forward_iterator<Iterator>);
+
+    Iterator begin() { return Iterator(this, &m_world, 0, 0); }
+
+    Iterator end() {
+        return Iterator(this, &m_world, m_matched_archetypes.size(), 0);
+    }
 
   private:
-    std::vector<ArchetypeSlice<Opts...>> m_slices;
+    World& m_world;
+    std::vector<ArchetypeId> m_matched_archetypes;
 };
 
 } // namespace triple::ecs::v2

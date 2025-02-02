@@ -1,10 +1,42 @@
 module;
+#include <cassert>
+#include <cctype>
 #include <cstdint>
+#include <vector>
 
 export module triple.ecs.v2:entity;
+import :fwd;
 
 namespace triple::ecs::v2 {
 
-export using Entity = std::uint32_t;
+export struct EntityLocation {
+    ArchetypeId archetype_id;
+    std::size_t row;
+};
+
+export class Entities {
+  public:
+    Entities() : m_next_id(0) {}
+
+    Entity alloc() {
+        auto id = (Entity)m_next_id++;
+        m_locations.emplace_back();
+        return id;
+    }
+
+    void set_location(Entity entity, EntityLocation location) {
+        assert(entity < m_locations.size());
+        m_locations[entity] = location;
+    }
+
+    EntityLocation get_location(Entity entity) {
+        assert(entity < m_locations.size());
+        return m_locations[entity];
+    }
+
+  private:
+    std::vector<EntityLocation> m_locations;
+    std::uint32_t m_next_id;
+};
 
 } // namespace triple::ecs::v2

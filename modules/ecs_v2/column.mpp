@@ -1,0 +1,65 @@
+module;
+#include <cstdlib>
+#include <cstring>
+
+export module triple.ecs.v2:column;
+
+namespace triple::ecs::v2 {
+
+// TODO: destructor
+export class Column {
+  private:
+    void* m_elements;
+    std::size_t m_element_size;
+    std::size_t m_count;
+    std::size_t m_capacity;
+
+  public:
+    Column(std::size_t element_size) :
+        m_element_size(element_size), m_count(0), m_capacity(64) {
+        m_elements = std::malloc(element_size * m_capacity);
+    }
+
+    void set(std::size_t row, const void* element) {
+        if (element == nullptr)
+            std::memset(
+                static_cast<char*>(m_elements) + row * m_element_size,
+                0,
+                m_element_size
+            );
+        else
+            std::memcpy(
+                static_cast<char*>(m_elements) + row * m_element_size,
+                element,
+                m_element_size
+            );
+    }
+
+    void push_back(const void* element) {
+        if (m_count == m_capacity) {
+            m_capacity *= 2;
+            m_elements = std::realloc(m_elements, m_element_size * m_capacity);
+        }
+        set(m_count, element);
+        ++m_count;
+    }
+
+    void* get(std::size_t row) {
+        return static_cast<char*>(m_elements) + row * m_element_size;
+    }
+
+    void swap_remove(std::size_t row) {
+        if (row != m_count - 1)
+            std::memcpy(
+                static_cast<char*>(m_elements) + row * m_element_size,
+                static_cast<char*>(m_elements) + (m_count - 1) * m_element_size,
+                m_element_size
+            );
+        --m_count;
+    }
+
+    std::size_t size() const { return m_count; }
+    bool empty() const { return m_count == 0; }
+    std::size_t capacity() const { return m_capacity; }
+};
+} // namespace triple::ecs::v2

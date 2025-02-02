@@ -1,0 +1,127 @@
+module;
+#include <cassert>
+#include <optional>
+#include <unordered_map>
+#include <vector>
+
+export module triple.ecs.v2:sparse_set;
+import :entity;
+import :column;
+import triple.refl;
+
+namespace triple::ecs::v2 {
+
+export template<class I, class V>
+class SparseArray {
+  public:
+    bool contains(I index) const {
+        return index < m_values.size() && m_values[index].has_value();
+    }
+
+    V& get(I index) {
+        assert(contains(index));
+        return m_values[index].value();
+    }
+
+    void insert(I index, const V& value) {
+        if (index >= m_values.size()) {
+            m_values.resize(index + 1, std::nullopt);
+        }
+        m_values[index] = value;
+    }
+
+    void remove(I index) { m_values[index].reset(); }
+
+  private:
+    std::vector<std::optional<V>> m_values;
+};
+
+export class ComponentSparseSet {
+  public:
+    ComponentSparseSet(refl::Type type) : m_type(type), m_dense(type.size()) {}
+
+    std::size_t size() const { return m_dense.size(); }
+    bool empty() const { return m_dense.empty(); }
+
+    void insert(Entity entity, refl::Ref comp) {
+        if (m_sparse.contains(entity)) {
+            auto dense_index = m_sparse.get(entity);
+            assert(entity == m_entities[dense_index]);
+            m_dense.set(dense_index, comp.address());
+        } else {
+            auto dense_index = m_dense.size();
+            m_dense.push_back(comp.address());
+            m_sparse.insert(entity, dense_index);
+            m_entities.push_back(entity);
+        }
+    }
+
+    bool contains(Entity entity) const { return m_sparse.contains(entity); }
+
+    refl::Ref get(Entity entity) {
+        if (!m_sparse.contains(entity)) {
+            return nullptr;
+        }
+        auto dense_index = m_sparse.get(entity);
+        return refl::Ref(m_dense.get(dense_index), m_type);
+    }
+
+  private:
+    refl::Type m_type;
+    std::vector<Entity> m_entities;
+    SparseArray<Entity, std::size_t> m_sparse;
+    Column m_dense;
+};
+
+export template<class I, class V>
+class SparseSet {
+  public:
+    bool contains(I index) const { return m_sparse.contains(index); }
+
+    V& get(I index) {
+        assert(contains(index));
+        return m_dense[m_sparse.get(index)];
+    }
+
+    void insert(I index, V&& value) {
+        if (contains(index)) {
+            auto dense_index = m_sparse.get(index);
+            m_dense[dense_index] = std::forward<V>(value);
+        } else {
+            m_sparse.insert(index, (I)m_dense.size());
+            m_indices.push_back(index);
+            m_dense.push_back(std::forward<V>(value));
+        }
+    }
+
+    void remove(I index) {
+        if (!contains(index)) {
+            return;
+        }
+        auto dense_index = m_sparse.get(index);
+        m_sparse.remove(index);
+        auto is_last = (dense_index == m_dense.size() - 1);
+        std::swap(m_indices[dense_index], m_indices.back());
+        m_indices.pop_back();
+        std::swap(m_dense[dense_index], m_dense.back());
+        m_dense.pop_back();
+        if (!is_last) {
+            m_sparse.get(m_indices[dense_index]) = dense_index;
+        }
+    }
+
+    bool empty() const { return m_dense.empty(); }
+
+    void clear() {
+        m_dense.clear();
+        m_indices.clear();
+        m_sparse.clear();
+    }
+
+  private:
+    std::vector<V> m_dense;
+    std::vector<I> m_indices;
+    SparseArray<I, I> m_sparse;
+};
+
+} // namespace triple::ecs::v2
